@@ -6,7 +6,7 @@ plus TF-IDF SKU + model name matching with confidence scoring.
 import streamlit as st
 import pandas as pd
 import re, io
-from engines import SKUMatcher, ModelNameMatcher, mine_overrides, DEFAULT_CONFIG
+from engines import SKUMatcher, ModelNameMatcher, mine_overrides, derive_canonical_models, DEFAULT_CONFIG
 
 st.set_page_config(page_title="SKU Standardizer", page_icon="🔖", layout="wide")
 
@@ -99,10 +99,18 @@ if ref_file and st.sidebar.button("Load reference data", type="primary"):
                      for _, r in mdf.iterrows() if str(r.iloc[0]).strip() and str(r.iloc[1]).strip()]
             base = SKUMatcher(st.session_state.master_skus)
             st.session_state.overrides = mine_overrides(base, pairs)
+        # If no canonical model list was found, derive one from the SKUs (Option C)
+        if not st.session_state.canon_models and st.session_state.master_skus:
+            st.session_state.canon_models = derive_canonical_models(st.session_state.master_skus)
+            st.session_state.models_derived = True
+        else:
+            st.session_state.models_derived = False
+
         st.sidebar.success(f"Loaded {len(st.session_state.master_skus)} SKUs, "
                            f"{len(st.session_state.canon_models)} models, "
                            f"{len(st.session_state.uin_lookup)} UINs, "
-                           f"{len(st.session_state.overrides)} overrides.")
+                           f"{len(st.session_state.overrides)} overrides."
+                           + (" (models derived from SKUs)" if st.session_state.get("models_derived") else ""))
     except Exception as e:
         st.sidebar.error(f"Load failed: {e}")
 
