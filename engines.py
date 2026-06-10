@@ -119,9 +119,10 @@ class ModelNameMatcher:
             if t in self.STRIP_TOKENS: continue
             toks.append(t)
         r = " ".join(toks)
-        r = re.sub(r'(?<=[a-z]) (?=[0-9])', '', r)
-        r = re.sub(r'(?<=[0-9]) (?=[a-z])', '', r)
-        return re.sub(r' +', ' ', r).strip()
+        # fully join: SKU-derived model tokens are joined (e.g. "activegps","pulse2max"),
+        # while humans type spaced ("Active Gps","Pulse 2 Max") — collapse to one token form
+        r = re.sub(r'\s+', '', r)
+        return r.strip()
 
     def match(self, messy, top_k=3):
         raw = str(messy).strip()
@@ -157,3 +158,43 @@ def mine_overrides(matcher, mapping_pairs):
         if base != clean:
             overrides[matcher.normalize(polluted)] = clean
     return overrides
+
+
+# ---------------------------------------------------------------
+#  Derive a canonical model list directly from master SKUs
+#  (for catalogs that have no separate model-name list)
+# ---------------------------------------------------------------
+_PREFIXES = ["wrb-sw_alt","wrb-sw","wrb-sb","aud-hdphn","aud-spkr","aud-case",
+             "aud-erphn","pwr-cable","pwr-chrgr","pwr-tag1","cmb"]
+_MATERIALS = {"std","mtl","lthr","meshmtl","glossymtl","mattemtl","si","ny","ri",
+              "sport","sprt","spt","mesh","glmtl"}
+
+def _extract_model_token(sku):
+    s = str(sku).lower().replace("_", "-")
+    for p in _PREFIXES:
+        if s.startswith(p + "-"):
+            s = s[len(p)+1:]; break
+    parts, mp = s.split("-"), []
+    for seg in parts:
+        if seg in _MATERIALS: break
+        mp.append(seg)
+    return "".join(mp)
+
+def _canonicalize_model(token):
+    # strip product-line prefixes so colorfit/cf/none collapse together
+    for pre in ("colorfit", "cf"):
+        if token.startswith(pre) and len(token) > len(pre):
+            return token[len(pre):]
+    return token
+
+def derive_canonical_models(master_skus):
+    """Return a sorted list of canonical model tokens extracted from master SKUs.
+       Use when the catalog has SKUs but no separate model-name list."""
+    seen = {}
+    for sku in master_skus:
+        tok = _extract_model_token(sku)
+        if not tok:
+            continue
+        canon = _canonicalize_model(tok)
+        seen[canon] = seen.get(canon, 0) + 1
+    return sorted(seen.keys())
